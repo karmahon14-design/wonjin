@@ -1,0 +1,217 @@
+HTML
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<svg id="barcode"></svg>
+<script>
+  // 'PROD-2026-001' 번호로 Code 128 바코드 렌더링
+  JsBarcode("#barcode", "PROD-2026-001", {
+    format: "CODE128",
+    lineColor: "#000",
+    width: 2,
+    height: 60,
+    displayValue: true // 바코드 아래에 번호 표시
+  });
+</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>모바일 바코드 재고관리</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #f4f6f8; color: #222; padding-bottom: 40px; }
+    header { background: #1a73e8; color: #fff; padding: 16px; text-align: center; font-size: 1.1rem; font-weight: bold; }
+    .container { max-width: 500px; margin: 0 auto; padding: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    h2 { font-size: 1rem; margin-bottom: 12px; color: #333; }
+    button { border: none; border-radius: 8px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .btn-primary { background: #1a73e8; color: #fff; width: 100%; }
+    .btn-secondary { background: #e8f0fe; color: #1a73e8; }
+    .btn-danger { background: #fce8e6; color: #d93025; }
+    .btn-group { display: flex; gap: 8px; margin-top: 8px; }
+    input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; font-size: 0.95rem; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; display: none; margin-bottom: 12px; }
+    .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+    .item:last-child { border-bottom: none; }
+    .item-info { flex: 1; }
+    .item-name { font-weight: bold; font-size: 1rem; }
+    .item-code { font-size: 0.85rem; color: #666; }
+    .item-qty { font-size: 1.1rem; font-weight: bold; color: #1a73e8; margin-right: 12px; }
+    .qty-controls button { width: 32px; height: 32px; padding: 0; font-size: 1.1rem; border-radius: 50%; }
+  </style>
+</head>
+<body>
+
+<header>📦 제품 바코드 재고관리</header>
+
+<div class="container">
+  <!-- 스캐너 영역 -->
+  <div class="card">
+    <h2>바코드 스캔</h2>
+    <div id="reader"></div>
+    <button id="scanBtn" class="btn-primary" onclick="toggleScanner()">카메라 스캐너 켜기</button>
+  </div>
+
+  <!-- 제품 등록 및 입출고 폼 -->
+  <div class="card">
+    <h2>제품 정보 등록 / 관리</h2>
+    <input type="text" id="barcodeInput" placeholder="바코드 번호 (스캔 시 자동입력)">
+    <input type="text" id="nameInput" placeholder="제품명">
+    <input type="text" id="specInput" placeholder="규격 / 위치 / 비고">
+    <input type="number" id="qtyInput" placeholder="수량 (기본값: 1)" value="1">
+    
+    <div class="btn-group">
+      <button class="btn-primary" onclick="saveItem(1)">입고 / 등록 (+)</button>
+      <button class="btn-secondary" style="width: 50%;" onclick="saveItem(-1)">출고 (-)</button>
+    </div>
+  </div>
+
+  <!-- 재고 목록 -->
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h2>보유 재고 목록 (<span id="totalCount">0</span>)</h2>
+      <button class="btn-secondary" style="font-size: 0.8rem; padding: 6px 10px;" onclick="exportCSV()">CSV 내보내기</button>
+    </div>
+    <div id="inventoryList"></div>
+  </div>
+</div>
+
+<script>
+  let inventory = JSON.parse(localStorage.getItem('inventory') || '{}');
+  let html5QrCode = null;
+  let isScanning = false;
+
+  function renderList() {
+    const list = document.getElementById('inventoryList');
+    list.innerHTML = '';
+    const keys = Object.keys(inventory);
+    document.getElementById('totalCount').innerText = keys.length;
+
+    if (keys.length === 0) {
+      list.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">등록된 제품이 없습니다.</div>';
+      return;
+    }
+
+    keys.forEach(code => {
+      const item = inventory[code];
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `
+        <div class="item-info">
+          <div class="item-name">${item.name}</div>
+          <div class="item-code">코드: ${code} ${item.spec ? '| ' + item.spec : ''}</div>
+        </div>
+        <div class="item-qty">${item.qty}개</div>
+        <div class="qty-controls">
+          <button class="btn-secondary" onclick="adjustQty('${code}', 1)">+</button>
+          <button class="btn-secondary" onclick="adjustQty('${code}', -1)">-</button>
+          <button class="btn-danger" style="margin-left: 4px;" onclick="deleteItem('${code}')">×</button>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function saveItem(sign = 1) {
+    const code = document.getElementById('barcodeInput').value.trim();
+    const name = document.getElementById('nameInput').value.trim();
+    const spec = document.getElementById('specInput').value.trim();
+    const qtyChange = parseInt(document.getElementById('qtyInput').value, 10) || 1;
+
+    if (!code) {
+      alert('바코드 번호를 입력하거나 스캔하세요.');
+      return;
+    }
+
+    if (!inventory[code]) {
+      if (!name) {
+        alert('신규 등록 시 제품명을 반드시 입력해야 합니다.');
+        return;
+      }
+      inventory[code] = {
+        name: name,
+        spec: spec,
+        qty: Math.max(0, qtyChange * sign)
+      };
+    } else {
+      if (name) inventory[code].name = name;
+      if (spec) inventory[code].spec = spec;
+      inventory[code].qty = Math.max(0, inventory[code].qty + (qtyChange * sign));
+    }
+
+    localStorage.setItem('inventory', JSON.stringify(inventory));
+    renderList();
+
+    // 폼 초기화
+    document.getElementById('barcodeInput').value = '';
+    document.getElementById('nameInput').value = '';
+    document.getElementById('specInput').value = '';
+    document.getElementById('qtyInput').value = '1';
+  }
+
+  function adjustQty(code, change) {
+    if (inventory[code]) {
+      inventory[code].qty = Math.max(0, inventory[code].qty + change);
+      localStorage.setItem('inventory', JSON.stringify(inventory));
+      renderList();
+    }
+  }
+
+  function deleteItem(code) {
+    if (confirm('이 제품 항목을 삭제하시겠습니까?')) {
+      delete inventory[code];
+      localStorage.setItem('inventory', JSON.stringify(inventory));
+      renderList();
+    }
+  }
+
+  function toggleScanner() {
+    const readerDiv = document.getElementById('reader');
+    const scanBtn = document.getElementById('scanBtn');
+
+    if (!isScanning) {
+      readerDiv.style.display = 'block';
+      html5QrCode = new Html5Qrcode("reader");
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        (decodedText) => {
+          document.getElementById('barcodeInput').value = decodedText;
+          if (inventory[decodedText]) {
+            document.getElementById('nameInput').value = inventory[decodedText].name;
+            document.getElementById('specInput').value = inventory[decodedText].spec || '';
+          }
+          toggleScanner();
+        },
+        (error) => {}
+      ).catch(err => {
+        alert('카메라 권한을 확인해주세요.');
+        readerDiv.style.display = 'none';
+      });
+      scanBtn.innerText = '스캐너 닫기';
+      scanBtn.classList.replace('btn-primary', 'btn-danger');
+      isScanning = true;
+    } else {
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          readerDiv.style.display = 'none';
+          scanBtn.innerText = '카메라 스캐너 켜기';
+          scanBtn.classList.replace('btn-danger', 'btn-primary');
+          isScanning = false;
+        });
+      }
+    }
+  }
+
+  function exportCSV() {
+    let csv = "\uFEFF바코드,제품명,규격비고,수량\n";
+    for (let code in inventory) {
+      csv += `"${code}","${inventory[code].name}","${inventory[code].spec || ''}",${inventory[code].qty}\n`;
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `재고현황_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+  }
